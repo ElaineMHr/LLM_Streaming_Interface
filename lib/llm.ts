@@ -1,5 +1,11 @@
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
 export async function callLLMStream(
-  prompt: string,
+  messages: ChatMessage[],
+  signal?: AbortSignal,
 ): Promise<ReadableStream<Uint8Array>> {
   const apiKey = process.env.OPENAI_API_KEY;
   const baseUrl = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
@@ -16,9 +22,10 @@ export async function callLLMStream(
     body: JSON.stringify({
       model,
       stream: true,
-      messages: [{ role: "user", content: prompt }],
+      messages,
       temperature: 0.7,
     }),
+    signal,
   });
 
   if (!resp.ok || !resp.body) {
