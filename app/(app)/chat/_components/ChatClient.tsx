@@ -1,26 +1,48 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Square } from "lucide-react";
 import { ChatMessage } from "@/lib/llm";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ThinkingDots } from "@/app/(app)/chat/_components/ThinkingDots";
 
 export default function ChatClient() {
   const [prompt, setPrompt] = useState("");
+
+  // These 3 could be potentially grouped into one streamState
   const [output, setOutput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+  const hasChat = messages.some(
+    (m) => m.role === "user" || m.role === "assistant",
+  );
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(
     null,
   );
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const frameId = requestAnimationFrame(() => {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [messages, output, isStreaming]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) return;
+
     setError(null);
     setOutput("");
     setIsStreaming(true);
@@ -30,7 +52,7 @@ export default function ChatClient() {
 
     const nextMessages: ChatMessage[] = [
       ...messages,
-      { role: "user", content: prompt.trim() },
+      { role: "user", content: trimmedPrompt },
     ];
     setMessages(nextMessages);
 
@@ -96,9 +118,12 @@ export default function ChatClient() {
         { role: "assistant", content: assistantText },
       ]);
       setPrompt("");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      setError(err?.message ?? "Unknown error");
+    } catch (err: unknown) {
+      // User-requested stop
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsStreaming(false);
     }
@@ -107,6 +132,13 @@ export default function ChatClient() {
   function handleAbort() {
     readerRef.current?.cancel().catch(() => {});
     abortControllerRef.current?.abort();
+
+    // Add output message to the message history if there is an early stop
+    if (output.trim()) {
+      setMessages((prev) => [...prev, { role: "assistant", content: output }]);
+      setOutput("");
+    }
+
     setIsStreaming(false);
   }
 
@@ -121,51 +153,64 @@ export default function ChatClient() {
   }
 
   return (
-    <div className="h-full overflow-hidden">
-      {/* Message Area - scrollbar at far right */}
-      <div className="h-full overflow-y-auto">
-        <div className="fixed bg-white w-full h-16 flex items-center justify-between">
-          <h1 className="m-4 text-2xl">LLM Streaming Interface</h1>
-          <Button type="button" onClick={newChat} className="mr-3">
+    <div className="h-dvh overflow-hidden bg-zinc-100 flex flex-col">
+      <header className="h-16 shrink-0 border-b border-zinc-200 bg-white">
+        <div className="mx-auto h-full px-4 flex items-center justify-between">
+          <h1 className="text-2xl">LLM Streaming Interface</h1>
+          <Button
+            type="button"
+            onClick={newChat}
+            className="bg-linear-to-r from-violet-600 to-indigo-600"
+          >
             + New Chat
           </Button>
         </div>
-        <div className="max-w-225 mx-auto px-4 pt-10 pb-28">
-          <div className="space-y-3">
-            {messages
-              .filter((m) => m.role !== "system")
-              .map((m, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[75%] rounded-2xl px-3 py-2 whitespace-pre-wrap ${
-                      m.role === "user"
-                        ? "bg-zinc-900 text-white"
-                        : "bg-white text-zinc-900"
-                    }`}
-                  >
-                    {m.content}
-                  </div>
-                </div>
-              ))}
+      </header>
+
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+        {!hasChat && !isStreaming ? (
+          <div className="h-full flex items-center justify-center text-3xl text-zinc-700">
+            What’s on your mind today?
           </div>
-
-          {isStreaming && (
-            <div className="flex justify-start mt-3">
-              <div className="max-w-[75%] rounded-2xl px-3 py-2 bg-white text-zinc-900 whitespace-pre-wrap wrap-break-words">
-                {output}
-              </div>
+        ) : (
+          <div className="max-w-4xl mx-auto px-4 py-4 pb-28">
+            <div className="space-y-3">
+              {messages
+                .filter((m) => m.role !== "system")
+                .map((m, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-2xl px-3 py-2 whitespace-pre-wrap ${
+                        m.role === "user"
+                          ? "bg-linear-to-r from-violet-600 to-indigo-600 text-white"
+                          : "bg-white text-zinc-900"
+                      }`}
+                    >
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
             </div>
-          )}
-        </div>
-      </div>
-      <div className="bg-zinc-100 fixed inset-x-0 bottom-0 h-14"></div>
 
-      {/* Prompt Input fixed to bottom of viewport, centered */}
-      <div className="fixed inset-x-0 bottom-0">
-        <div className="max-w-225 mx-auto px-4 pb-6 pt-3">
+            {isStreaming && (
+              <div className="flex justify-start mt-3">
+                <div className="max-w-[75%] rounded-2xl px-3 py-2 bg-white text-zinc-900 whitespace-pre-wrap wrap-break-word">
+                  {output ? output : <ThinkingDots />}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 relative">
+        {/* Start footer tint at input vertical midpoint: pt-3 (12px) + half of h-14 (28px) = 40px */}
+        <div className="absolute inset-x-0 bottom-0 top-0 bg-zinc-100 pointer-events-none" />
+
+        <div className="relative max-w-4xl mx-auto px-4 pb-6 pt-3 border-t">
           <div className="h-14 border-2 rounded-full bg-white flex items-center px-2">
             <form
               onSubmit={onSubmit}
@@ -178,26 +223,27 @@ export default function ChatClient() {
                 }`}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Enter prompt..."
+                placeholder="Ask anything"
+                disabled={isStreaming}
               />
 
               {!isStreaming ? (
                 <button
                   type="submit"
                   disabled={!prompt.trim()}
-                  className="border-2 rounded-full border-zinc-950 w-8 h-8 flex justify-center items-center"
+                  className="border-2 rounded-full border-indigo-600 w-8 h-8 flex justify-center items-center"
                 >
-                  <ArrowUp size={18} className="pl-px" />
+                  <ArrowUp size={18} className="pl-px text-violet-600" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleAbort}
-                  className="border-2 rounded-full border-zinc-950 w-8 h-8 flex justify-center items-center"
+                  className="border-2 rounded-full border-indigo-600  w-8 h-8 flex justify-center items-center bg-linear-to-r from-violet-600 to-indigo-600"
                 >
                   <Square
                     size={18}
-                    className="fill-current stroke-none pl-px"
+                    className="fill-current stroke-none pl-px text-white"
                   />
                 </button>
               )}
