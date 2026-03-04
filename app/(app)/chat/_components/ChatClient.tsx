@@ -50,6 +50,8 @@ export default function ChatClient() {
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
+    // nextMessages includes both current user-prompt and the full message history.
+    // Server receives the full conversation context.
     const nextMessages: ChatMessage[] = [
       ...messages,
       { role: "user", content: trimmedPrompt },
@@ -65,8 +67,14 @@ export default function ChatClient() {
       });
 
       if (!resp.ok || !resp.body) {
+        if (!resp.body) {
+          throw new Error("The server did not return a stream body.");
+        }
+        if (resp.status === 401 || resp.status === 403) {
+          throw new Error("Session expired. Please log in again.");
+        }
         const text = await resp.text().catch(() => "");
-        throw new Error(`Request failed: ${resp.status} ${text}`);
+        throw new Error(text || `Request failed (${resp.status})`);
       }
 
       const reader = resp.body.getReader();
@@ -78,14 +86,24 @@ export default function ChatClient() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
+          buffer += decoder.decode(); // flush decoder internal buffer
           setPrompt("");
           break;
         }
 
+        // Buffer to piece the stream/reader together
         buffer += decoder.decode(value, { stream: true });
 
+        // Expected SSE wire format from /api/chat:
+        //   data: {json}\n
+        //   data: {json}\n
+        //   ...
+        //   data: [DONE]\n
+        // Each chunk may contain partial lines, so we accumulate into `buffer`,
+        // split on "\n", process complete lines, and keep the remainder for
+        // the next chunk.
         const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        buffer = lines.pop() ?? ""; // "" instead of `undefined` in case the array is empty
 
         for (const line of lines) {
           const trimmed = line.trim();
@@ -103,9 +121,9 @@ export default function ChatClient() {
                 setOutput(assistantText);
               }
             } catch {
-              // fallback: append raw
-              assistantText += data;
-              setOutput(assistantText);
+              // fallback:
+              // Ignore malformed data instead of showing raw text to user
+              continue;
             }
           } else {
             assistantText += trimmed;
@@ -120,9 +138,7 @@ export default function ChatClient() {
       setPrompt("");
     } catch (err: unknown) {
       // User-requested stop
-      if (err instanceof DOMException && err.name === "AbortError") {
-        return;
-      }
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsStreaming(false);
@@ -130,10 +146,14 @@ export default function ChatClient() {
   }
 
   function handleAbort() {
+    // Stop streaming immediately.
+    // `reader.cancel()` stops the local ReadableStream consumption (breaks the reader loop),
+    // while `AbortController.abort()` cancels the underlying fetch request so the server
+    // stops sending data. Calling both ensures the stream is fully terminated.
     readerRef.current?.cancel().catch(() => {});
     abortControllerRef.current?.abort();
 
-    // Add output message to the message history if there is an early stop
+    // Add output message to the message history in the case of an early stop
     if (output.trim()) {
       setMessages((prev) => [...prev, { role: "assistant", content: output }]);
       setOutput("");

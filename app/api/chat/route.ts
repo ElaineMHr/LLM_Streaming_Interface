@@ -1,8 +1,18 @@
+import { authOptions } from "@/lib/auth";
 import { callLLMStream, ChatMessage } from "@/lib/llm";
+import { getServerSession } from "next-auth";
 
 export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session) return new Response("Unauthorized", { status: 401 });
+
   try {
-    const body = (await req.json()) as { messages?: ChatMessage[] };
+    let body: { messages?: ChatMessage[] };
+    try {
+      body = (await req.json()) as { messages?: ChatMessage[] };
+    } catch {
+      return new Response("Invalid JSON body", { status: 400 });
+    }
     const messages = body.messages?.filter(
       (m) => m && typeof m.role === "string" && typeof m.content === "string",
     );
@@ -12,15 +22,18 @@ export async function POST(req: Request) {
 
     const upstream = await callLLMStream(messages, req.signal);
 
-    // Pass through streaming bytes. Client will parse SSE-ish lines.
+    // Pass through the upstream LLM stream without buffering so tokens
+    // arrive to the client immediately. Headers configure SSE-style
+    // streaming and prevent proxies from caching or modifying the stream.
     return new Response(upstream, {
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
       },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (err: any) {
-    return new Response(err?.message ?? "Server error", { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Server error";
+    return new Response(message, { status: 500 });
   }
 }
