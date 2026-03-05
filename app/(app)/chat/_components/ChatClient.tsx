@@ -149,7 +149,7 @@ export default function ChatClient() {
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (err && (err as any).name === "AbortError") {
-        // AbortError is expected when the user clicks Stop; ignore it.
+        // AbortError is expected when the user clicks Stop.
       } else {
         setError(err instanceof Error ? err.message : "Unknown error");
       }
@@ -165,12 +165,6 @@ export default function ChatClient() {
     // stops sending data. Calling both ensures the stream is fully terminated.
     readerRef.current?.cancel().catch(() => {});
     abortControllerRef.current?.abort();
-
-    // Add output message to the message history in the case of an early stop
-    if (output.trim()) {
-      setMessages((prev) => [...prev, { role: "assistant", content: output }]);
-      setOutput("");
-    }
 
     setIsStreaming(false);
   }
@@ -202,6 +196,7 @@ export default function ChatClient() {
             type="button"
             onClick={newChat}
             className="bg-linear-to-r from-violet-600 to-indigo-600"
+            disabled={isStreaming}
           >
             + New Chat
           </Button>
