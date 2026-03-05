@@ -10,7 +10,7 @@ import { ThinkingDots } from "@/app/(app)/chat/_components/ThinkingDots";
 export default function ChatClient() {
   const [prompt, setPrompt] = useState("");
 
-  // These 3 could be potentially grouped into one streamState
+  // These 3 could potentially be grouped into one streamState
   const [output, setOutput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
