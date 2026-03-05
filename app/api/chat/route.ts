@@ -3,6 +3,7 @@ import { callLLMStream, ChatMessage } from "@/lib/llm";
 import { getServerSession } from "next-auth";
 
 export async function POST(req: Request) {
+  // Server-side auth guard: only authenticated sessions can access the streaming endpoint.
   const session = await getServerSession(authOptions);
   if (!session) return new Response("Unauthorized", { status: 401 });
 
@@ -33,6 +34,11 @@ export async function POST(req: Request) {
       },
     });
   } catch (err: unknown) {
+    // Client disconnected / aborted request
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (err && (err as any).name === "AbortError") {
+      return new Response(null, { status: 499 });
+    }
     const message = err instanceof Error ? err.message : "Server error";
     return new Response(message, { status: 500 });
   }

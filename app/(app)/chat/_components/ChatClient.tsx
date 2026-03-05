@@ -40,6 +40,7 @@ export default function ChatClient() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isStreaming) return; // avoid double submitting
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) return;
 
@@ -83,17 +84,9 @@ export default function ChatClient() {
       let buffer = "";
       let assistantText = "";
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          buffer += decoder.decode(); // flush decoder internal buffer
-          setPrompt("");
-          break;
-        }
-
-        // Buffer to piece the stream/reader together
-        buffer += decoder.decode(value, { stream: true });
-
+      // Helper to process complete SSE lines from `buffer`.
+      // Mutates `buffer` (keeps unfinished remainder) and appends tokens to `assistantText`.
+      function processBufferLines() {
         // Expected SSE wire format from /api/chat:
         //   data: {json}\n
         //   data: {json}\n
@@ -103,7 +96,7 @@ export default function ChatClient() {
         // split on "\n", process complete lines, and keep the remainder for
         // the next chunk.
         const lines = buffer.split("\n");
-        buffer = lines.pop() ?? ""; // "" instead of `undefined` in case the array is empty
+        buffer = lines.pop() ?? "";
 
         for (const line of lines) {
           const trimmed = line.trim();
@@ -121,25 +114,45 @@ export default function ChatClient() {
                 setOutput(assistantText);
               }
             } catch {
-              // fallback:
               // Ignore malformed data instead of showing raw text to user
-              continue;
             }
-          } else {
-            assistantText += trimmed;
-            setOutput(assistantText);
           }
         }
       }
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: assistantText },
-      ]);
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          buffer += decoder.decode(); // flush decoder internal buffer
+          processBufferLines();
+
+          // Process any final unterminated line (in case the stream didn't end with "\n")
+          if (buffer.trim()) {
+            buffer += "\n";
+            processBufferLines();
+          }
+          break;
+        }
+
+        // Buffer to piece the stream/reader together
+        buffer += decoder.decode(value, { stream: true });
+        processBufferLines();
+      }
+
+      if (assistantText.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: assistantText },
+        ]);
+      }
       setPrompt("");
     } catch (err: unknown) {
-      // User-requested stop
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError(err instanceof Error ? err.message : "Unknown error");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (err && (err as any).name === "AbortError") {
+        // AbortError is expected when the user clicks Stop; ignore it.
+      } else {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      }
     } finally {
       setIsStreaming(false);
     }
@@ -161,6 +174,14 @@ export default function ChatClient() {
 
     setIsStreaming(false);
   }
+
+  // Unmount cleanup to prevent the stream from continuing after navigation.
+  useEffect(() => {
+    return () => {
+      readerRef.current?.cancel().catch(() => {});
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   function newChat() {
     readerRef.current?.cancel().catch(() => {});
