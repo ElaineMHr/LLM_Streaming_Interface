@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Square, Sparkles, User } from "lucide-react";
+import { ArrowUp, Plus, Square, Sparkles, User } from "lucide-react";
 import { ChatMessage } from "@/lib/llm";
 import { ThinkingDots } from "@/app/(app)/chat/_components/ThinkingDots";
 import { cn } from "@/lib/utils";
@@ -43,16 +43,6 @@ export default function ChatClient() {
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
     }
   }, [prompt]);
-
-  // Listen for new-chat event dispatched by Sidebar
-  useEffect(() => {
-    function handleNewChat() {
-      newChat();
-    }
-    window.addEventListener("new-chat", handleNewChat);
-    return () => window.removeEventListener("new-chat", handleNewChat);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -193,6 +183,24 @@ export default function ChatClient() {
 
   return (
     <div className="h-full flex flex-col bg-background">
+      {/* Header */}
+      <div className="shrink-0 flex items-center justify-end px-4 py-3 border-b border-border">
+        <button
+          type="button"
+          onClick={newChat}
+          disabled={isStreaming}
+          className={cn(
+            "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors",
+            isStreaming
+              ? "text-muted-foreground cursor-not-allowed"
+              : "text-foreground hover:bg-muted",
+          )}
+        >
+          <Plus className="w-4 h-4" />
+          New Chat
+        </button>
+      </div>
+
       {/* Messages Area */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         {!hasChat && !isStreaming ? (

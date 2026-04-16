@@ -3,7 +3,6 @@
 import { useState } from "react";
 import {
   MessageSquare,
-  Plus,
   Settings,
   LogOut,
   Sparkles,
@@ -11,7 +10,6 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -48,16 +46,11 @@ export default function Sidebar() {
     {} as Record<string, Conversation[]>,
   );
 
-  function handleNewChat() {
-    setActiveId("");
-    window.dispatchEvent(new CustomEvent("new-chat"));
-  }
-
   return (
     <div className="flex flex-col h-full bg-sidebar border-r border-sidebar-border">
       {/* Header */}
       <div className="p-4 shrink-0">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-sidebar-foreground flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-sidebar" />
           </div>
@@ -65,15 +58,6 @@ export default function Sidebar() {
             Aria Chat
           </span>
         </div>
-
-        <Button
-          className="w-full justify-start gap-2 h-10"
-          variant="default"
-          onClick={handleNewChat}
-        >
-          <Plus className="w-4 h-4" />
-          New Chat
-        </Button>
       </div>
 
       {/* Conversations */}
