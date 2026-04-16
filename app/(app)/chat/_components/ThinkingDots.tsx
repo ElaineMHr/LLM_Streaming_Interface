@@ -1,15 +1,9 @@
 export function ThinkingDots() {
   return (
-    <span className="inline-flex gap-1.5">
-      <span className="animate-bounce [animation-delay:0.2s] text-xl font-bold">
-        .
-      </span>
-      <span className="animate-bounce [animation-delay:0.4s] text-xl font-bold">
-        .
-      </span>
-      <span className="animate-bounce [animation-delay:0.6s] text-xl font-bold">
-        .
-      </span>
+    <span className="inline-flex items-center gap-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" />
+      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse [animation-delay:150ms]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse [animation-delay:300ms]" />
     </span>
   );
 }

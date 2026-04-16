@@ -1,20 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Square, Sparkles, User } from "lucide-react";
 import { ChatMessage } from "@/lib/llm";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { ThinkingDots } from "@/app/(app)/chat/_components/ThinkingDots";
+import { cn } from "@/lib/utils";
 
 export default function ChatClient() {
   const [prompt, setPrompt] = useState("");
-
-  // These 3 could potentially be grouped into one streamState
   const [output, setOutput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const hasChat = messages.some(
@@ -26,6 +22,7 @@ export default function ChatClient() {
     null,
   );
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
@@ -38,21 +35,39 @@ export default function ChatClient() {
     return () => cancelAnimationFrame(frameId);
   }, [messages, output, isStreaming]);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    }
+  }, [prompt]);
+
+  // Listen for new-chat event dispatched by Sidebar
+  useEffect(() => {
+    function handleNewChat() {
+      newChat();
+    }
+    window.addEventListener("new-chat", handleNewChat);
+    return () => window.removeEventListener("new-chat", handleNewChat);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (isStreaming) return; // avoid double submitting
+    if (isStreaming) return;
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) return;
 
     setError(null);
     setOutput("");
     setIsStreaming(true);
+    setPrompt("");
 
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
-    // nextMessages includes both current user-prompt and the full message history.
-    // Server receives the full conversation context.
     const nextMessages: ChatMessage[] = [
       ...messages,
       { role: "user", content: trimmedPrompt },
@@ -84,17 +99,7 @@ export default function ChatClient() {
       let buffer = "";
       let assistantText = "";
 
-      // Helper to process complete SSE lines from `buffer`.
-      // Mutates `buffer` (keeps unfinished remainder) and appends tokens to `assistantText`.
       function processBufferLines() {
-        // Expected SSE wire format from /api/chat:
-        //   data: {json}\n
-        //   data: {json}\n
-        //   ...
-        //   data: [DONE]\n
-        // Each chunk may contain partial lines, so we accumulate into `buffer`,
-        // split on "\n", process complete lines, and keep the remainder for
-        // the next chunk.
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
 
@@ -123,10 +128,9 @@ export default function ChatClient() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
-          buffer += decoder.decode(); // flush decoder internal buffer
+          buffer += decoder.decode();
           processBufferLines();
 
-          // Process any final unterminated line (in case the stream didn't end with "\n")
           if (buffer.trim()) {
             buffer += "\n";
             processBufferLines();
@@ -134,7 +138,6 @@ export default function ChatClient() {
           break;
         }
 
-        // Buffer to piece the stream/reader together
         buffer += decoder.decode(value, { stream: true });
         processBufferLines();
       }
@@ -145,7 +148,6 @@ export default function ChatClient() {
           { role: "assistant", content: assistantText },
         ]);
       }
-      setPrompt("");
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (err && (err as any).name === "AbortError") {
@@ -159,13 +161,8 @@ export default function ChatClient() {
   }
 
   function handleAbort() {
-    // Stop streaming immediately.
-    // `reader.cancel()` stops the local ReadableStream consumption (breaks the reader loop),
-    // while `AbortController.abort()` cancels the underlying fetch request so the server
-    // stops sending data. Calling both ensures the stream is fully terminated.
     readerRef.current?.cancel().catch(() => {});
     abortControllerRef.current?.abort();
-
     setIsStreaming(false);
   }
 
@@ -187,106 +184,150 @@ export default function ChatClient() {
     setIsStreaming(false);
   }
 
-  return (
-    <div className="h-dvh overflow-hidden bg-zinc-100 flex flex-col">
-      <header className="h-16 shrink-0 border-b border-zinc-200 bg-white">
-        <div className="mx-auto h-full px-4 flex items-center justify-between">
-          <h1 className="text-2xl">LLM Streaming Interface</h1>
-          <Button
-            type="button"
-            onClick={newChat}
-            className="bg-linear-to-r from-violet-600 to-indigo-600"
-            disabled={isStreaming}
-          >
-            + New Chat
-          </Button>
-        </div>
-      </header>
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSubmit(e as unknown as React.FormEvent);
+    }
+  }
 
+  return (
+    <div className="h-full flex flex-col bg-background">
+      {/* Messages Area */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         {!hasChat && !isStreaming ? (
-          <div className="h-full flex items-center justify-center text-3xl text-zinc-700">
-            What’s on your mind today?
+          <div className="h-full flex flex-col items-center justify-center px-4">
+            <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-6">
+              <Sparkles className="w-7 h-7 text-muted-foreground" />
+            </div>
+            <h2 className="text-2xl font-semibold text-foreground mb-2 text-balance text-center">
+              How can I help you today?
+            </h2>
+            <p className="text-muted-foreground text-center max-w-md">
+              Ask me anything. I&apos;m here to help with writing, analysis,
+              coding, and more.
+            </p>
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto px-4 py-4 pb-28">
-            <div className="space-y-3">
-              {messages
-                .filter((m) => m.role !== "system")
-                .map((m, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[75%] rounded-2xl px-3 py-2 whitespace-pre-wrap ${
-                        m.role === "user"
-                          ? "bg-linear-to-r from-violet-600 to-indigo-600 text-white"
-                          : "bg-white text-zinc-900"
-                      }`}
-                    >
-                      {m.content}
-                    </div>
-                  </div>
-                ))}
-            </div>
+          <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+            {messages
+              .filter((m) => m.role !== "system")
+              .map((m, idx) => (
+                <MessageBubble key={idx} message={m} />
+              ))}
 
             {isStreaming && (
-              <div className="flex justify-start mt-3">
-                <div className="max-w-[75%] rounded-2xl px-3 py-2 bg-white text-zinc-900 whitespace-pre-wrap wrap-break-word">
-                  {output ? output : <ThinkingDots />}
-                </div>
-              </div>
+              <MessageBubble
+                message={{ role: "assistant", content: output || "" }}
+                isStreaming={!output}
+              />
             )}
           </div>
         )}
       </div>
 
-      <div className="shrink-0 relative">
-        {/* Start footer tint at input vertical midpoint: pt-3 (12px) + half of h-14 (28px) = 40px */}
-        <div className="absolute inset-x-0 bottom-0 top-0 bg-zinc-100 pointer-events-none" />
-
-        <div className="relative max-w-4xl mx-auto px-4 pb-6 pt-3 border-t">
-          <div className="h-14 border-2 rounded-full bg-white flex items-center px-2">
-            <form
-              onSubmit={onSubmit}
-              id="prompt-form"
-              className="flex w-full items-center gap-2"
-            >
-              <Input
-                className={`flex-1 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 pl-4 ${
-                  isStreaming ? "text-muted-foreground" : ""
-                }`}
+      {/* Input Area */}
+      <div className="shrink-0 border-t border-border bg-background">
+        <div className="max-w-3xl mx-auto px-4 py-4">
+          <form onSubmit={onSubmit} className="relative">
+            <div className="relative flex items-end gap-2 rounded-2xl border border-border bg-muted/30 p-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background transition-shadow">
+              <textarea
+                ref={textareaRef}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Ask anything"
+                onKeyDown={handleKeyDown}
+                placeholder="Message Aria..."
                 disabled={isStreaming}
+                rows={1}
+                className={cn(
+                  "flex-1 resize-none bg-transparent px-2 py-2 text-sm placeholder:text-muted-foreground focus:outline-none",
+                  "max-h-[200px] min-h-[44px]",
+                  isStreaming && "text-muted-foreground",
+                )}
               />
 
               {!isStreaming ? (
                 <button
                   type="submit"
                   disabled={!prompt.trim()}
-                  className="border-2 rounded-full border-indigo-600 w-8 h-8 flex justify-center items-center"
+                  className={cn(
+                    "shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
+                    prompt.trim()
+                      ? "bg-foreground text-background hover:bg-foreground/90"
+                      : "bg-muted text-muted-foreground cursor-not-allowed",
+                  )}
                 >
-                  <ArrowUp size={18} className="pl-px text-violet-600" />
+                  <ArrowUp className="w-4 h-4" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleAbort}
-                  className="border-2 rounded-full border-indigo-600  w-8 h-8 flex justify-center items-center bg-linear-to-r from-violet-600 to-indigo-600"
+                  className="shrink-0 w-9 h-9 rounded-xl bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90 transition-colors"
                 >
-                  <Square
-                    size={18}
-                    className="fill-current stroke-none pl-px text-white"
-                  />
+                  <Square className="w-3.5 h-3.5 fill-current" />
                 </button>
               )}
-            </form>
-          </div>
+            </div>
+          </form>
 
-          {error && <div className="text-red-600 mt-2">{error}</div>}
+          {error && (
+            <div className="mt-3 text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground text-center mt-3">
+            Aria can make mistakes. Consider checking important information.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  isStreaming = false,
+}: {
+  message: ChatMessage;
+  isStreaming?: boolean;
+}) {
+  const isUser = message.role === "user";
+
+  return (
+    <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>
+      {/* Avatar */}
+      <div
+        className={cn(
+          "shrink-0 w-8 h-8 rounded-lg flex items-center justify-center",
+          isUser ? "bg-foreground" : "bg-muted",
+        )}
+      >
+        {isUser ? (
+          <User className="w-4 h-4 text-background" />
+        ) : (
+          <Sparkles className="w-4 h-4 text-muted-foreground" />
+        )}
+      </div>
+
+      {/* Message Content */}
+      <div className={cn("flex-1 min-w-0", isUser && "flex justify-end")}>
+        <div
+          className={cn(
+            "inline-block max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
+            isUser
+              ? "bg-foreground text-background rounded-br-md"
+              : "bg-muted text-foreground rounded-bl-md",
+          )}
+        >
+          {isStreaming ? (
+            <ThinkingDots />
+          ) : (
+            <div className="whitespace-pre-wrap break-words">
+              {message.content}
+            </div>
+          )}
         </div>
       </div>
     </div>

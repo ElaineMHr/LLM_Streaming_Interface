@@ -14,8 +14,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Personal Assistant",
-  description: "Chat with your personal assistant",
+  title: "Aria Chat",
+  description: "Your AI conversation companion",
+  icons: {
+    icon: [
+      {
+        url: "/icon-light-32x32.png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/icon-dark-32x32.png",
+        media: "(prefers-color-scheme: dark)",
+      },
+      {
+        url: "/icon.svg",
+        type: "image/svg+xml",
+      },
+    ],
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -24,9 +41,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased h-full m-0`}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background`}
       >
         <AuthProvider>{children}</AuthProvider>
       </body>

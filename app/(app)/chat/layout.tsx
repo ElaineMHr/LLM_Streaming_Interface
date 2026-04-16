@@ -8,23 +8,21 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Server-side route guard: verify the session before rendering the page.
-  // Unauthenticated users are redirected to the login route so the client
-  // chat interface never mounts without a valid session.
   const session = await getServerSession(authOptions);
 
   if (!session) {
     redirect("/");
   }
+
   return (
-    <div className="flex min-h-screen bg-neutral-100">
+    <div className="flex h-dvh bg-background overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 shrink-0">
+      <aside className="w-64 shrink-0 hidden md:block">
         <Sidebar />
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-hidden">{children}</main>
     </div>
   );
 }
