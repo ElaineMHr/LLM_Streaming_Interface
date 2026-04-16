@@ -263,7 +263,7 @@ export default function ChatClient() {
                 <button
                   type="button"
                   onClick={handleAbort}
-                  className="shrink-0 w-9 h-9 rounded-xl bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90 transition-colors"
+                  className="shrink-0 w-9 h-9 rounded-xl bg-muted text-muted-foreground flex items-center justify-center hover:bg-muted/90 transition-colors"
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
                 </button>
