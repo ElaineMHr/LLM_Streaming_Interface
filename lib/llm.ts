@@ -26,6 +26,7 @@ export type ChatMessage = {
 export async function callLLMStream(
   messages: ChatMessage[],
   signal?: AbortSignal,
+  maxTokens: number = 50,
 ): Promise<ReadableStream<Uint8Array>> {
   const apiKey = process.env.OPENAI_API_KEY;
   const baseUrl = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
@@ -45,6 +46,7 @@ export async function callLLMStream(
       stream: true, // enables token streaming (SSE frames)
       messages,
       temperature: 0.7,
+      max_tokens: maxTokens,
     }),
     signal,
   });
